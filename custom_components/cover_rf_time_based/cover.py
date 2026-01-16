@@ -444,27 +444,24 @@ class CoverTimeBased(CoverEntity, RestoreEntity):
         cmd = "UNKNOWN"
         if command == "close_cover":
             cmd = "DOWN"
-            self._state = False
             if self._cover_entity_id is not None:
-                await self.hass.services.async_call("cover", "close_cover", {"entity_id": self._cover_entity_id}, False)
+                await self.hass.services.async_call("cover", "close_cover", {"entity_id": self._cover_entity_id}, blocking=True)
             else:
-                await self.hass.services.async_call("homeassistant", "turn_on", {"entity_id": self._close_script_entity_id}, False)
+                await self.hass.services.async_call("homeassistant", "turn_on", {"entity_id": self._close_script_entity_id}, blocking=True)
 
         elif command == "open_cover":
             cmd = "UP"
-            self._state = True
             if self._cover_entity_id is not None:
-                await self.hass.services.async_call("cover", "open_cover", {"entity_id": self._cover_entity_id}, False)
+                await self.hass.services.async_call("cover", "open_cover", {"entity_id": self._cover_entity_id}, blocking=True)
             else:
-                await self.hass.services.async_call("homeassistant", "turn_on", {"entity_id": self._open_script_entity_id}, False)
+                await self.hass.services.async_call("homeassistant", "turn_on", {"entity_id": self._open_script_entity_id}, blocking=True)
 
         elif command == "stop_cover":
             cmd = "STOP"
-            self._state = True
             if self._cover_entity_id is not None:
-                await self.hass.services.async_call("cover", "stop_cover", {"entity_id": self._cover_entity_id}, False)
+                await self.hass.services.async_call("cover", "stop_cover", {"entity_id": self._cover_entity_id}, blocking=True)
             else:
-                await self.hass.services.async_call("homeassistant", "turn_on", {"entity_id": self._stop_script_entity_id}, False)
+                await self.hass.services.async_call("homeassistant", "turn_on", {"entity_id": self._stop_script_entity_id}, blocking=True)
 
         _LOGGER.debug(self._name + ': ' + '_async_handle_command :: %s', cmd)
 
