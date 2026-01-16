@@ -14,6 +14,7 @@ from homeassistant.components.cover import (
     PLATFORM_SCHEMA,
     DEVICE_CLASSES_SCHEMA,
     CoverEntity,
+    CoverEntityFeature,
 )
 from homeassistant.const import (
     CONF_NAME,
@@ -289,7 +290,17 @@ class CoverTimeBased(CoverEntity, RestoreEntity):
     def assumed_state(self):
         """Return True unless we have set position with confidence through send_know_position service."""
         return self._assume_uncertain_position
- 
+
+    @property
+    def supported_features(self) -> CoverEntityFeature:
+        """Flag supported features."""
+        return (
+            CoverEntityFeature.OPEN
+            | CoverEntityFeature.CLOSE
+            | CoverEntityFeature.STOP
+            | CoverEntityFeature.SET_POSITION
+        )
+
     async def async_set_cover_position(self, **kwargs):
        """Move the cover to a specific position."""
        if ATTR_POSITION in kwargs:
@@ -353,7 +364,7 @@ class CoverTimeBased(CoverEntity, RestoreEntity):
     def auto_updater_hook(self, now):
         """Call for the autoupdater."""
         _LOGGER.debug(self._name + ': ' + 'auto_updater_hook')
-        self.async_schedule_update_ha_state()
+        self.async_write_ha_state()
         if self.position_reached():
             _LOGGER.debug(self._name + ': ' + 'auto_updater_hook :: position_reached')
             self.stop_auto_updater()
