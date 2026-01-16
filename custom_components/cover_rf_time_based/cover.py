@@ -19,7 +19,6 @@ from homeassistant.components.cover import (
 from homeassistant.const import (
     CONF_NAME,
     CONF_DEVICE_CLASS,
-    ATTR_ENTITY_ID,
     ATTR_DEVICE_CLASS,
     SERVICE_CLOSE_COVER,
     SERVICE_OPEN_COVER,
@@ -97,22 +96,16 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     }
 )
 
-POSITION_SCHEMA = vol.Schema(
-    {
-        vol.Required(ATTR_ENTITY_ID): cv.entity_ids,
-        vol.Required(ATTR_POSITION): cv.positive_int,
-        vol.Optional(ATTR_CONFIDENT, default=False): cv.boolean,
-        vol.Optional(ATTR_POSITION_TYPE, default=ATTR_POSITION_TYPE_TARGET): cv.string
-    }
-)
+POSITION_SCHEMA = {
+    vol.Required(ATTR_POSITION): cv.positive_int,
+    vol.Optional(ATTR_CONFIDENT, default=False): cv.boolean,
+    vol.Optional(ATTR_POSITION_TYPE, default=ATTR_POSITION_TYPE_TARGET): cv.string,
+}
 
 
-ACTION_SCHEMA = vol.Schema(
-    {
-        vol.Required(ATTR_ENTITY_ID): cv.entity_ids,
-        vol.Required(ATTR_ACTION): cv.string
-    }
-)
+ACTION_SCHEMA = {
+    vol.Required(ATTR_ACTION): cv.string,
+}
 
 
 DOMAIN = "cover_rf_time_based"
@@ -424,6 +417,39 @@ class CoverTimeBased(CoverEntity, RestoreEntity):
             _LOGGER.debug(self._name + ': ' + 'set_known_position :: non_traveling position  %d, confident %s, position_type %s', position, str(confident), position_type)
             self.tc.set_position(position)
 
+    async def _call_entity_service(self, entity_id: str | None) -> None:
+        """Call the appropriate service based on entity type.
+
+        Different entity types require different services:
+        - script.* -> script.turn_on
+        - input_button.* -> input_button.press
+        - button.* -> button.press
+        - other -> homeassistant.turn_on (fallback)
+        """
+        if entity_id is None:
+            _LOGGER.warning("%s: Entity ID is None, cannot call service", self._name)
+            return
+
+        domain = entity_id.split(".")[0]
+
+        if domain == "script":
+            await self.hass.services.async_call(
+                "script", "turn_on", {"entity_id": entity_id}, blocking=True
+            )
+        elif domain == "input_button":
+            await self.hass.services.async_call(
+                "input_button", "press", {"entity_id": entity_id}, blocking=True
+            )
+        elif domain == "button":
+            await self.hass.services.async_call(
+                "button", "press", {"entity_id": entity_id}, blocking=True
+            )
+        else:
+            # Fallback for other entity types
+            await self.hass.services.async_call(
+                "homeassistant", "turn_on", {"entity_id": entity_id}, blocking=True
+            )
+
     async def auto_stop_if_necessary(self):
         """Do auto stop if necessary."""
         current_position = self.tc.current_position()
@@ -438,32 +464,53 @@ class CoverTimeBased(CoverEntity, RestoreEntity):
                     await self._async_handle_command(SERVICE_STOP_COVER)
 
     async def _async_handle_command(self, command, *args):
-        """We have cover.* triggered command. Reset assumed state and known_position processsing and execute"""
+        """Handle cover command. Reset assumed state and known_position processing and execute."""
         self._assume_uncertain_position = not self._always_confident
         self._processing_known_position = False
-        cmd = "UNKNOWN"
+
         if command == "close_cover":
-            cmd = "DOWN"
             if self._cover_entity_id is not None:
-                await self.hass.services.async_call("cover", "close_cover", {"entity_id": self._cover_entity_id}, blocking=True)
+                try:
+                    await self.hass.services.async_call(
+                        "cover", "close_cover", {"entity_id": self._cover_entity_id}, blocking=True
+                    )
+                except Exception as e:
+                    _LOGGER.error("%s: Failed to close cover %s: %s", self._name, self._cover_entity_id, e)
             else:
-                await self.hass.services.async_call("homeassistant", "turn_on", {"entity_id": self._close_script_entity_id}, blocking=True)
+                try:
+                    await self._call_entity_service(self._close_script_entity_id)
+                except Exception as e:
+                    _LOGGER.error("%s: Failed to call close entity %s: %s", self._name, self._close_script_entity_id, e)
 
         elif command == "open_cover":
-            cmd = "UP"
             if self._cover_entity_id is not None:
-                await self.hass.services.async_call("cover", "open_cover", {"entity_id": self._cover_entity_id}, blocking=True)
+                try:
+                    await self.hass.services.async_call(
+                        "cover", "open_cover", {"entity_id": self._cover_entity_id}, blocking=True
+                    )
+                except Exception as e:
+                    _LOGGER.error("%s: Failed to open cover %s: %s", self._name, self._cover_entity_id, e)
             else:
-                await self.hass.services.async_call("homeassistant", "turn_on", {"entity_id": self._open_script_entity_id}, blocking=True)
+                try:
+                    await self._call_entity_service(self._open_script_entity_id)
+                except Exception as e:
+                    _LOGGER.error("%s: Failed to call open entity %s: %s", self._name, self._open_script_entity_id, e)
 
         elif command == "stop_cover":
-            cmd = "STOP"
             if self._cover_entity_id is not None:
-                await self.hass.services.async_call("cover", "stop_cover", {"entity_id": self._cover_entity_id}, blocking=True)
+                try:
+                    await self.hass.services.async_call(
+                        "cover", "stop_cover", {"entity_id": self._cover_entity_id}, blocking=True
+                    )
+                except Exception as e:
+                    _LOGGER.error("%s: Failed to stop cover %s: %s", self._name, self._cover_entity_id, e)
             else:
-                await self.hass.services.async_call("homeassistant", "turn_on", {"entity_id": self._stop_script_entity_id}, blocking=True)
+                try:
+                    await self._call_entity_service(self._stop_script_entity_id)
+                except Exception as e:
+                    _LOGGER.error("%s: Failed to call stop entity %s: %s", self._name, self._stop_script_entity_id, e)
 
-        _LOGGER.debug(self._name + ': ' + '_async_handle_command :: %s', cmd)
+        _LOGGER.debug(self._name + ': ' + '_async_handle_command :: %s', command)
 
         # Update state of entity
         self.async_write_ha_state()
